@@ -2,41 +2,61 @@
 package com.example.misrecordatorios.viewmodel
 
 import android.app.Application
+
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+
 import com.example.misrecordatorios.Categoria
 import com.example.misrecordatorios.EstadoRecordatorio
 import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.Recordatorio
+
 import com.example.misrecordatorios.data.RecordatoriosRepository
 import com.example.misrecordatorios.data.local.RecordatoriosDatabase
+import com.example.misrecordatorios.data.sync.ResultadoSincronizacion
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+
+
 class RecordatoriosViewModel(
+
     application: Application
+
 ) : AndroidViewModel(application) {
 
-    // =========================================
-    // 1. INICIALIZACION DE ROOM
-    // =========================================
+
+    // ============================================
+    // 1. BASE DE DATOS ROOM
+    // ============================================
 
     private val database =
-        RecordatoriosDatabase.obtenerInstancia(application)
+        RecordatoriosDatabase.obtenerInstancia(
+            application
+        )
+
+
+    // ============================================
+    // 2. REPOSITORIO LOCAL-FIRST
+    // ============================================
 
     private val repository =
         RecordatoriosRepository(
-            database.recordatorioDao()
+            database = database
         )
 
-    // =========================================
-    // 2. ESTADOS DE LA INTERFAZ
-    // =========================================
+
+    // ============================================
+    // 3. ESTADO DEL LISTADO
+    // ============================================
 
     private val _uiState =
         MutableStateFlow<RecordatoriosUiState>(
@@ -46,6 +66,11 @@ class RecordatoriosViewModel(
     val uiState: StateFlow<RecordatoriosUiState> =
         _uiState.asStateFlow()
 
+
+    // ============================================
+    // 4. ESTADO DE GUARDADO
+    // ============================================
+
     private val _guardadoState =
         MutableStateFlow<GuardadoUiState>(
             GuardadoUiState.Idle
@@ -54,11 +79,10 @@ class RecordatoriosViewModel(
     val guardadoState: StateFlow<GuardadoUiState> =
         _guardadoState.asStateFlow()
 
-    private val _errorOperacion =
-        MutableStateFlow<String?>(null)
 
-    val errorOperacion: StateFlow<String?> =
-        _errorOperacion.asStateFlow()
+    // ============================================
+    // 5. ESTADO DE OPERACIONES CRUD
+    // ============================================
 
     private val _operacionState =
         MutableStateFlow<OperacionUiState>(
@@ -68,53 +92,127 @@ class RecordatoriosViewModel(
     val operacionState: StateFlow<OperacionUiState> =
         _operacionState.asStateFlow()
 
-    // =========================================
-    // 3. CONTROL DE OBSERVACION
-    // =========================================
+
+    // ============================================
+    // 6. ERRORES DE OPERACIONES LOCALES
+    // ============================================
+
+    private val _errorOperacion =
+        MutableStateFlow<String?>(null)
+
+    val errorOperacion: StateFlow<String?> =
+        _errorOperacion.asStateFlow()
+
+
+    // ============================================
+    // 7. CANTIDAD DE REGISTROS PENDIENTES
+    // ============================================
+
+    val cantidadPendientes: StateFlow<Int> =
+
+        repository.cantidadPendientes.stateIn(
+
+            scope = viewModelScope,
+
+            started =
+                SharingStarted.WhileSubscribed(5000),
+
+            initialValue = 0
+        )
+
+
+    // ============================================
+    // 8. ESTADO DE SINCRONIZACION
+    // ============================================
+
+    val sincronizando: StateFlow<Boolean> =
+        repository.sincronizando
+
+
+    // ============================================
+    // 9. ULTIMO RESULTADO DE SINCRONIZACION
+    // ============================================
+
+    val ultimoResultadoSincronizacion:
+            StateFlow<ResultadoSincronizacion?> =
+
+        repository.ultimoResultadoSincronizacion
+
+
+    // ============================================
+    // 10. ERROR DE SINCRONIZACION
+    // ============================================
+
+    private val _errorSincronizacion =
+        MutableStateFlow<String?>(null)
+
+    val errorSincronizacion: StateFlow<String?> =
+        _errorSincronizacion.asStateFlow()
+
+
+    // ============================================
+    // 11. CONTROL DE CORRUTINAS
+    // ============================================
 
     private var observacionJob: Job? = null
 
     private var simulacionJob: Job? = null
+
+    private var sincronizacionJob: Job? = null
+
+
+    // ============================================
+    // 12. CONTROL DE SIMULACIONES
+    // ============================================
 
     private var simulacionActiva = false
 
     private var ultimosRecordatorios:
             List<Recordatorio> = emptyList()
 
-    // =========================================
-    // 4. INICIALIZACION DEL VIEWMODEL
-    // =========================================
+
+    // ============================================
+    // 13. INICIALIZACION
+    // ============================================
 
     init {
+
         cargarRecordatorios()
     }
 
-    // =========================================
-    // 5. OBSERVAR RECORDATORIOS DESDE ROOM
-    // =========================================
+
+    // ============================================
+    // 14. OBSERVAR RECORDATORIOS DESDE ROOM
+    // ============================================
 
     fun cargarRecordatorios() {
+
+        observacionJob?.cancel()
 
         simulacionJob?.cancel()
 
         simulacionActiva = false
 
-        observacionJob?.cancel()
-
         _uiState.value =
             RecordatoriosUiState.Loading
+
 
         observacionJob = viewModelScope.launch {
 
             try {
 
-                repository.recordatorios.collect { lista ->
+                repository.recordatorios.collect {
 
-                    ultimosRecordatorios = lista
+                        recordatorios ->
+
+                    ultimosRecordatorios =
+                        recordatorios
 
                     if (!simulacionActiva) {
 
-                        publicarRecordatorios(lista)
+                        publicarRecordatorios(
+                            recordatorios
+                        )
                     }
                 }
 
@@ -126,29 +224,44 @@ class RecordatoriosViewModel(
 
                 _uiState.value =
                     RecordatoriosUiState.Error(
-                        "No se pudieron cargar los recordatorios."
+
+                        mensaje =
+                            "No se pudieron cargar " +
+                                    "los recordatorios."
                     )
             }
         }
     }
 
+
+    // ============================================
+    // 15. PUBLICAR ESTADO DEL LISTADO
+    // ============================================
+
     private fun publicarRecordatorios(
-        lista: List<Recordatorio>
+
+        recordatorios: List<Recordatorio>
+
     ) {
 
-        _uiState.value = if (lista.isEmpty()) {
+        _uiState.value =
 
-            RecordatoriosUiState.Empty
+            if (recordatorios.isEmpty()) {
 
-        } else {
+                RecordatoriosUiState.Empty
 
-            RecordatoriosUiState.Success(lista)
-        }
+            } else {
+
+                RecordatoriosUiState.Success(
+                    recordatorios = recordatorios
+                )
+            }
     }
 
-    // =========================================
-    // 6. CREAR RECORDATORIOS
-    // =========================================
+
+    // ============================================
+    // 16. GUARDAR RECORDATORIO LOCALMENTE
+    // ============================================
 
     fun guardarRecordatorio(
 
@@ -162,55 +275,66 @@ class RecordatoriosViewModel(
 
     ) {
 
-        if (_guardadoState.value ==
+        if (
+            _guardadoState.value ==
             GuardadoUiState.Saving
         ) {
+
             return
         }
 
-        val tituloLimpio = titulo.trim()
+
+        val tituloLimpio =
+            titulo.trim()
+
 
         if (tituloLimpio.isBlank()) {
 
             _guardadoState.value =
                 GuardadoUiState.Error(
-                    "El titulo no puede estar vacio."
+                    mensaje =
+                        "El titulo no puede estar vacio."
                 )
 
             return
         }
+
 
         if (tituloLimpio.length > 100) {
 
             _guardadoState.value =
                 GuardadoUiState.Error(
-                    "El titulo no puede superar 100 caracteres."
+                    mensaje =
+                        "El titulo no puede superar " +
+                                "100 caracteres."
                 )
 
             return
         }
 
+
         _guardadoState.value =
             GuardadoUiState.Saving
+
+        _errorOperacion.value = null
+
 
         viewModelScope.launch {
 
             try {
 
-                val nuevoRecordatorio = Recordatorio(
-
-                    // Valor provisional requerido
-                    // por el modelo de dominio.
-                    // El Mapper lo convierte a 0
-                    // para que Room genere el ID.
+                val recordatorio = Recordatorio(
 
                     id = 1,
 
                     titulo = tituloLimpio,
 
-                    descripcion = descripcion
-                        ?.trim()
-                        ?.takeIf { it.isNotBlank() },
+                    descripcion =
+                        descripcion
+                            ?.trim()
+                            ?.takeIf {
+                                it.isNotBlank()
+                            },
 
                     categoria = categoria,
 
@@ -220,16 +344,18 @@ class RecordatoriosViewModel(
                         EstadoRecordatorio.Pendiente
                 )
 
-                repository.guardar(nuevoRecordatorio)
+
+                repository.guardar(
+                    recordatorio
+                )
+
+
+                recuperarObservacionSiNecesario()
+
 
                 _guardadoState.value =
                     GuardadoUiState.Saved
 
-                if (simulacionActiva ||
-                    observacionJob?.isActive != true
-                ) {
-                    cargarRecordatorios()
-                }
 
             } catch (e: CancellationException) {
 
@@ -239,104 +365,170 @@ class RecordatoriosViewModel(
 
                 _guardadoState.value =
                     GuardadoUiState.Error(
-                        "No se pudo guardar el recordatorio."
+
+                        mensaje =
+                            "No se pudo guardar " +
+                                    "el recordatorio."
                     )
             }
         }
     }
 
-    // =========================================
-    // 7. REINICIAR ESTADO DE GUARDADO
-    // =========================================
+
+    // ============================================
+    // 17. REINICIAR ESTADO DE GUARDADO
+    // ============================================
 
     fun reiniciarGuardado() {
 
-        _guardadoState.value =
-            GuardadoUiState.Idle
-    }
+        if (
+            _guardadoState.value !=
+            GuardadoUiState.Saving
+        ) {
 
-    // =========================================
-    // 8. CONSULTAR RECORDATORIO POR ID
-    // =========================================
-
-    fun obtenerRecordatorio(
-        id: Int
-    ): Recordatorio? {
-
-        return ultimosRecordatorios.find {
-
-            it.id == id
+            _guardadoState.value =
+                GuardadoUiState.Idle
         }
     }
 
-    // =========================================
-    // 9. ACTUALIZAR ESTADO
-    // =========================================
+
+    // ============================================
+    // 18. OBTENER RECORDATORIO POR ID
+    // ============================================
+
+    fun obtenerRecordatorio(
+
+        id: Int
+
+    ): Recordatorio? {
+
+        return ultimosRecordatorios.firstOrNull {
+
+                recordatorio ->
+
+            recordatorio.id == id
+        }
+    }
 
 
+    // ============================================
+    // 19. ACTUALIZAR ESTADO LOCAL
+    // ============================================
 
     fun actualizarEstado(
+
         id: Int,
+
         nuevoEstado: EstadoRecordatorio
+
     ) {
 
         ejecutarOperacion(
-            resultado = OperacionUiState.Actualizado
+
+            resultado =
+                OperacionUiState.Actualizado
+
         ) {
+
             repository.actualizarEstado(
+
                 id = id,
+
                 nuevoEstado = nuevoEstado
             )
         }
     }
 
+
+    // ============================================
+    // 20. ACTUALIZAR DATOS LOCALES
+    // ============================================
+
     fun actualizarDatos(
+
         id: Int,
+
         titulo: String,
+
         descripcion: String?,
+
         categoria: Categoria,
+
         prioridad: Prioridad
+
     ) {
 
         ejecutarOperacion(
-            resultado = OperacionUiState.Actualizado
+
+            resultado =
+                OperacionUiState.Actualizado
+
         ) {
+
             repository.actualizarDatos(
+
                 id = id,
+
                 titulo = titulo,
+
                 descripcion = descripcion,
+
                 categoria = categoria,
+
                 prioridad = prioridad
             )
         }
     }
 
+
+    // ============================================
+    // 21. ELIMINAR RECORDATORIO LOCALMENTE
+    // ============================================
+
     fun eliminarRecordatorio(
+
         id: Int
+
     ) {
 
         ejecutarOperacion(
-            resultado = OperacionUiState.Eliminado
+
+            resultado =
+                OperacionUiState.Eliminado
+
         ) {
+
             repository.eliminar(id)
         }
     }
 
+
+    // ============================================
+    // 22. EJECUTAR OPERACIONES CRUD
+    // ============================================
+
     private fun ejecutarOperacion(
+
         resultado: OperacionUiState,
+
         operacion: suspend () -> Unit
+
     ) {
 
-        if (_operacionState.value ==
+        if (
+            _operacionState.value ==
             OperacionUiState.Procesando
         ) {
+
             return
         }
+
 
         _operacionState.value =
             OperacionUiState.Procesando
 
         _errorOperacion.value = null
+
 
         viewModelScope.launch {
 
@@ -344,7 +536,11 @@ class RecordatoriosViewModel(
 
                 operacion()
 
-                _operacionState.value = resultado
+                recuperarObservacionSiNecesario()
+
+                _operacionState.value =
+                    resultado
+
 
             } catch (e: CancellationException) {
 
@@ -353,49 +549,217 @@ class RecordatoriosViewModel(
             } catch (e: Exception) {
 
                 val mensaje =
-                    if (e is IllegalArgumentException) {
-                        e.message ?: "Datos invalidos."
+
+                    if (
+                        e is IllegalArgumentException
+                    ) {
+
+                        e.message
+                            ?: "Los datos son invalidos."
+
                     } else {
-                        "No se pudo completar la operacion."
+
+                        "No se pudo completar " +
+                                "la operacion."
                     }
 
-                _errorOperacion.value = mensaje
+
+                _errorOperacion.value =
+                    mensaje
+
 
                 _operacionState.value =
-                    OperacionUiState.Error(mensaje)
+                    OperacionUiState.Error(
+                        mensaje = mensaje
+                    )
             }
         }
     }
 
-    fun reiniciarOperacion() {
 
-        if (_operacionState.value !=
-            OperacionUiState.Procesando
+    // ============================================
+    // 23. RECUPERAR OBSERVACION DE ROOM
+    // ============================================
+
+    private fun recuperarObservacionSiNecesario() {
+
+        if (
+            simulacionActiva ||
+            observacionJob?.isActive != true
         ) {
-            _operacionState.value =
-                OperacionUiState.Idle
 
-            _errorOperacion.value = null
+            cargarRecordatorios()
         }
     }
+
+
+    // ============================================
+    // 24. REINICIAR ESTADO DE OPERACION
+    // ============================================
+
+    fun reiniciarOperacion() {
+
+        if (
+            _operacionState.value !=
+            OperacionUiState.Procesando
+        ) {
+
+            _operacionState.value =
+                OperacionUiState.Idle
+        }
+    }
+
+
+    // ============================================
+    // 25. LIMPIAR ERROR LOCAL
+    // ============================================
 
     fun limpiarErrorOperacion() {
 
         _errorOperacion.value = null
     }
 
-    // =========================================
-    // 13. REINTENTAR CARGA
-    // =========================================
+
+    // ============================================
+    // 26. REINTENTAR CARGA LOCAL
+    // ============================================
 
     fun reintentar() {
 
         cargarRecordatorios()
     }
 
-    // =========================================
-    // 14. SIMULAR ESTADO LOADING
-    // =========================================
+
+    // ============================================
+    // 27. SINCRONIZAR RECORDATORIOS
+    // ============================================
+
+    fun sincronizarRecordatorios(
+
+        reintentarErrores: Boolean = true
+
+    ) {
+
+        // Evitar solicitudes repetidas desde la UI.
+
+        if (
+            sincronizacionJob?.isActive == true ||
+            sincronizando.value
+        ) {
+
+            return
+        }
+
+
+        _errorSincronizacion.value = null
+
+
+        sincronizacionJob = viewModelScope.launch {
+
+            try {
+
+                val resultado =
+                    repository.sincronizar(
+
+                        reintentarErrores =
+                            reintentarErrores
+                    )
+
+
+                when (resultado) {
+
+                    is ResultadoSincronizacion.Exito -> {
+
+                        _errorSincronizacion.value =
+                            null
+                    }
+
+
+                    is ResultadoSincronizacion.SinCambios -> {
+
+                        _errorSincronizacion.value =
+                            null
+                    }
+
+
+                    is ResultadoSincronizacion.Parcial -> {
+
+                        _errorSincronizacion.value =
+                            resultado.mensaje
+                    }
+
+
+                    is ResultadoSincronizacion.Error -> {
+
+                        _errorSincronizacion.value =
+                            resultado.mensaje
+                    }
+                }
+
+
+            } catch (e: CancellationException) {
+
+                throw e
+
+            } catch (e: Exception) {
+
+                _errorSincronizacion.value =
+                    "No se pudo ejecutar " +
+                            "la sincronizacion."
+            }
+        }
+    }
+
+
+    // ============================================
+    // 28. REINTENTAR SINCRONIZACION
+    // ============================================
+
+    fun reintentarSincronizacion() {
+
+        sincronizarRecordatorios(
+
+            reintentarErrores = true
+        )
+    }
+
+
+    // ============================================
+    // 29. CANCELAR SINCRONIZACION
+    // ============================================
+
+    fun cancelarSincronizacion() {
+
+        sincronizacionJob?.cancel()
+    }
+
+
+    // ============================================
+    // 30. LIMPIAR ERROR DE SINCRONIZACION
+    // ============================================
+
+    fun limpiarErrorSincronizacion() {
+
+        _errorSincronizacion.value = null
+    }
+
+
+    // ============================================
+    // 31. LIMPIAR ULTIMO RESULTADO
+    // ============================================
+
+    fun limpiarUltimoResultadoSincronizacion() {
+
+        repository
+            .limpiarUltimoResultadoSincronizacion()
+
+        _errorSincronizacion.value = null
+    }
+
+
+    // ============================================
+    // 32. SIMULAR ESTADO LOADING
+    // ============================================
 
     fun simularLoading() {
 
@@ -406,19 +770,19 @@ class RecordatoriosViewModel(
         _uiState.value =
             RecordatoriosUiState.Loading
 
+
         simulacionJob = viewModelScope.launch {
 
             delay(1000)
-
-            simulacionActiva = false
 
             cargarRecordatorios()
         }
     }
 
-    // =========================================
-    // 15. SIMULAR ESTADO EMPTY
-    // =========================================
+
+    // ============================================
+    // 33. SIMULAR ESTADO EMPTY
+    // ============================================
 
     fun vaciarRecordatorios() {
 
@@ -426,16 +790,14 @@ class RecordatoriosViewModel(
 
         simulacionActiva = true
 
-        // Solo modifica la interfaz.
-        // No elimina registros de Room.
-
         _uiState.value =
             RecordatoriosUiState.Empty
     }
 
-    // =========================================
-    // 16. SIMULAR ESTADO ERROR
-    // =========================================
+
+    // ============================================
+    // 34. SIMULAR ESTADO ERROR
+    // ============================================
 
     fun provocarError() {
 
@@ -445,22 +807,19 @@ class RecordatoriosViewModel(
 
         _uiState.value =
             RecordatoriosUiState.Error(
-                "Error simulado al cargar recordatorios."
+
+                mensaje =
+                    "Error simulado al cargar " +
+                            "los recordatorios."
             )
     }
 
-    // =========================================
-    // 17. RESTAURAR VISUALIZACION REAL
-    // =========================================
+
+    // ============================================
+    // 35. RESTAURAR OBSERVACION REAL
+    // ============================================
 
     fun restaurarRecordatorios() {
-
-        simulacionJob?.cancel()
-
-        simulacionActiva = false
-
-        // Recupera los registros reales de Room.
-        // No inserta datos simulados.
 
         cargarRecordatorios()
     }

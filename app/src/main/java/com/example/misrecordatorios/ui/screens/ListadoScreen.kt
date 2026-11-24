@@ -1,22 +1,52 @@
-
 package com.example.misrecordatorios.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.misrecordatorios.Recordatorio
-import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.EstadoRecordatorio
+import com.example.misrecordatorios.Prioridad
+import com.example.misrecordatorios.Recordatorio
 import com.example.misrecordatorios.data.preferences.OrdenRecordatorios
 import com.example.misrecordatorios.data.preferences.PreferenciasUsuario
-import com.example.misrecordatorios.viewmodel.RecordatoriosViewModel
+import com.example.misrecordatorios.data.sync.ResultadoSincronizacion
 import com.example.misrecordatorios.viewmodel.RecordatoriosUiState
+import com.example.misrecordatorios.viewmodel.RecordatoriosViewModel
+
+
+// ============================================
+// 1. PANTALLA PRINCIPAL
+// ============================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,17 +58,44 @@ fun ListadoScreen(
 
     onDetalleClick: (Int) -> Unit,
 
-    // API 3: preferencias del usuario
     preferencias: PreferenciasUsuario =
         PreferenciasUsuario(),
 
-    // API 3: navegacion a configuracion
     onConfiguracionClick: () -> Unit = {}
 
 ) {
 
-    val uiState by viewModel.uiState
+    // ========================================
+    // 2. OBSERVAR ESTADOS DEL VIEWMODEL
+    // ========================================
+
+    val uiState by
+    viewModel.uiState.collectAsStateWithLifecycle()
+
+
+    val cantidadPendientes by
+    viewModel.cantidadPendientes
         .collectAsStateWithLifecycle()
+
+
+    val sincronizando by
+    viewModel.sincronizando
+        .collectAsStateWithLifecycle()
+
+
+    val ultimoResultado by
+    viewModel.ultimoResultadoSincronizacion
+        .collectAsStateWithLifecycle()
+
+
+    val errorSincronizacion by
+    viewModel.errorSincronizacion
+        .collectAsStateWithLifecycle()
+
+
+    // ========================================
+    // 3. ESTRUCTURA PRINCIPAL
+    // ========================================
 
     Scaffold(
 
@@ -47,20 +104,30 @@ fun ListadoScreen(
             TopAppBar(
 
                 title = {
+
                     Text("MisRecordatorios")
                 },
 
                 actions = {
 
                     TextButton(
-                        onClick = onConfiguracionClick
+
+                        onClick =
+                            onConfiguracionClick
+
                     ) {
+
                         Text("Config.")
                     }
 
+
                     TextButton(
-                        onClick = onCrearClick
+
+                        onClick =
+                            onCrearClick
+
                     ) {
+
                         Text("+ Nuevo")
                     }
                 }
@@ -69,431 +136,1081 @@ fun ListadoScreen(
 
     ) { paddingValues ->
 
-        Column(
+
+        LazyColumn(
 
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
+                .padding(paddingValues),
+
+            contentPadding =
+                PaddingValues(16.dp),
 
             verticalArrangement =
                 Arrangement.spacedBy(12.dp)
 
         ) {
 
-            // =====================================
-            // API 2: CONTROLES DE PRUEBA
-            // =====================================
 
-            Text(
-                text = "Pruebas de estados",
-                style = MaterialTheme.typography.titleSmall
-            )
+            // ================================
+            // 4. PANEL DE SINCRONIZACION
+            // ================================
 
-            Row(
+            item(key = "sincronizacion") {
 
-                modifier = Modifier.fillMaxWidth(),
+                PanelSincronizacion(
 
-                horizontalArrangement =
-                    Arrangement.spacedBy(4.dp)
+                    cantidadPendientes =
+                        cantidadPendientes,
 
-            ) {
+                    sincronizando =
+                        sincronizando,
 
-                OutlinedButton(
+                    ultimoResultado =
+                        ultimoResultado,
 
-                    onClick = {
-                        viewModel.simularLoading()
+                    errorSincronizacion =
+                        errorSincronizacion,
+
+                    onSincronizar = {
+
+                        viewModel
+                            .sincronizarRecordatorios()
                     },
 
-                    modifier = Modifier.weight(1f),
+                    onReintentar = {
 
-                    contentPadding = PaddingValues(4.dp)
-
-                ) {
-                    Text("Loading")
-                }
-
-                OutlinedButton(
-
-                    onClick = {
-                        viewModel.vaciarRecordatorios()
+                        viewModel
+                            .reintentarSincronizacion()
                     },
 
-                    modifier = Modifier.weight(1f),
+                    onCancelar = {
 
-                    contentPadding = PaddingValues(4.dp)
-
-                ) {
-                    Text("Empty")
-                }
-
-                OutlinedButton(
-
-                    onClick = {
-                        viewModel.provocarError()
+                        viewModel
+                            .cancelarSincronizacion()
                     },
 
-                    modifier = Modifier.weight(1f),
+                    onLimpiarResultado = {
 
-                    contentPadding = PaddingValues(4.dp)
-
-                ) {
-                    Text("Error")
-                }
+                        viewModel
+                            .limpiarUltimoResultadoSincronizacion()
+                    }
+                )
             }
 
-            OutlinedButton(
 
-                onClick = {
-                    viewModel.restaurarRecordatorios()
-                },
+            // ================================
+            // 5. PREFERENCIAS ACTIVAS
+            // ================================
 
-                modifier = Modifier.fillMaxWidth()
+            item(key = "preferencias") {
 
-            ) {
-                Text("Restaurar datos")
+                PanelPreferencias(
+
+                    preferencias =
+                        preferencias,
+
+                    onConfiguracionClick =
+                        onConfiguracionClick
+                )
             }
 
-            HorizontalDivider()
 
-            // =====================================
-            // API 3: PREFERENCIAS ACTIVAS
-            // =====================================
+            // ================================
+            // 6. CONTROLES DE PRUEBA
+            // ================================
 
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            item(key = "simulaciones") {
 
-                Column(
+                PanelSimulaciones(
 
-                    modifier = Modifier.padding(12.dp),
-
-                    verticalArrangement =
-                        Arrangement.spacedBy(4.dp)
-
-                ) {
-
-                    Text(
-
-                        text = "Preferencias activas",
-
-                        style =
-                            MaterialTheme.typography.titleSmall,
-
-                        color =
-                            MaterialTheme.colorScheme.primary
-                    )
-
-                    Text(
-
-                        text = "Orden: ${preferencias.orden.nombre}",
-
-                        style =
-                            MaterialTheme.typography.bodySmall
-                    )
-
-                    Text(
-
-                        text = if (
-                            preferencias.mostrarCompletados
-                        ) {
-                            "Mostrando todos los recordatorios"
-                        } else {
-                            "Ocultando recordatorios completados"
-                        },
-
-                        style =
-                            MaterialTheme.typography.bodySmall
-                    )
-                }
+                    viewModel =
+                        viewModel
+                )
             }
 
-            // =====================================
-            // API 2: ESTADOS DE LA INTERFAZ
-            // =====================================
+
+            // ================================
+            // 7. ESTADOS DEL LISTADO
+            // ================================
 
             when (val estado = uiState) {
 
+
                 RecordatoriosUiState.Loading -> {
 
-                    Box(
-
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-
-                        contentAlignment = Alignment.Center
-
-                    ) {
-
-                        Column(
-
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
-
-                            verticalArrangement =
-                                Arrangement.spacedBy(12.dp)
-
-                        ) {
-
-                            CircularProgressIndicator()
-
-                            Text("Cargando recordatorios...")
-                        }
-                    }
-                }
-
-                is RecordatoriosUiState.Success -> {
-
-                    // API 3: aplicar filtro y ordenamiento
-                    val recordatoriosVisibles = remember(
-                        estado.recordatorios,
-                        preferencias
-                    ) {
-
-                        aplicarPreferencias(
-                            recordatorios = estado.recordatorios,
-                            preferencias = preferencias
-                        )
-                    }
-
-                    Text(
-
-                        text = "Recordatorios: " +
-                                "${recordatoriosVisibles.size}",
-
-                        style =
-                            MaterialTheme.typography.titleMedium
-                    )
-
-                    if (recordatoriosVisibles.isEmpty()) {
+                    item(key = "loading") {
 
                         Box(
 
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .height(180.dp),
 
-                            contentAlignment = Alignment.Center
+                            contentAlignment =
+                                Alignment.Center
 
                         ) {
 
                             Column(
 
                                 horizontalAlignment =
-                                    Alignment.CenterHorizontally,
-
-                                verticalArrangement =
-                                    Arrangement.spacedBy(12.dp)
+                                    Alignment.CenterHorizontally
 
                             ) {
 
-                                Text(
-                                    "No hay recordatorios visibles."
+                                CircularProgressIndicator()
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(12.dp)
                                 )
 
                                 Text(
-                                    "Revisa los filtros de configuración."
-                                )
-
-                                OutlinedButton(
-
-                                    onClick =
-                                        onConfiguracionClick
-
-                                ) {
-                                    Text("Ir a configuración")
-                                }
-                            }
-                        }
-
-                    } else {
-
-                        LazyColumn(
-
-                            modifier = Modifier.weight(1f),
-
-                            verticalArrangement =
-                                Arrangement.spacedBy(8.dp)
-
-                        ) {
-
-                            items(
-
-                                items = recordatoriosVisibles,
-
-                                key = { it.id }
-
-                            ) { recordatorio ->
-
-                                RecordatorioCard(
-
-                                    recordatorio = recordatorio,
-
-                                    onClick = {
-
-                                        onDetalleClick(
-                                            recordatorio.id
-                                        )
-                                    }
+                                    "Cargando recordatorios..."
                                 )
                             }
                         }
                     }
                 }
+
 
                 RecordatoriosUiState.Empty -> {
 
-                    Box(
+                    item(key = "empty") {
 
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                        PanelListadoVacio(
 
-                        contentAlignment = Alignment.Center
+                            mensaje =
+                                "No hay recordatorios registrados.",
 
-                    ) {
+                            textoBoton =
+                                "Crear recordatorio",
 
-                        Column(
-
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
-
-                            verticalArrangement =
-                                Arrangement.spacedBy(12.dp)
-
-                        ) {
-
-                            Text(
-                                "No hay recordatorios registrados."
-                            )
-
-                            Button(
-                                onClick = onCrearClick
-                            ) {
-                                Text("Crear recordatorio")
-                            }
-                        }
+                            onClick =
+                                onCrearClick
+                        )
                     }
                 }
 
+
                 is RecordatoriosUiState.Error -> {
 
-                    Box(
+                    item(key = "error_local") {
 
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                        PanelErrorLocal(
 
-                        contentAlignment = Alignment.Center
+                            mensaje =
+                                estado.mensaje,
+
+                            onReintentar = {
+
+                                viewModel.reintentar()
+                            }
+                        )
+                    }
+                }
+
+
+                is RecordatoriosUiState.Success -> {
+
+
+                    val recordatoriosVisibles =
+                        aplicarPreferencias(
+
+                            recordatorios =
+                                estado.recordatorios,
+
+                            preferencias =
+                                preferencias
+                        )
+
+
+                    item(key = "contador") {
+
+                        Text(
+
+                            text =
+                                "${recordatoriosVisibles.size} " +
+                                        "recordatorios visibles",
+
+                            style =
+                                MaterialTheme.typography.titleMedium,
+
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
+
+
+                    if (recordatoriosVisibles.isEmpty()) {
+
+
+                        item(key = "filtrado_vacio") {
+
+                            PanelListadoVacio(
+
+                                mensaje =
+                                    "No hay recordatorios visibles " +
+                                            "con las preferencias actuales.",
+
+                                textoBoton =
+                                    "Revisar configuracion",
+
+                                onClick =
+                                    onConfiguracionClick
+                            )
+                        }
+
+
+                    } else {
+
+
+                        items(
+
+                            items =
+                                recordatoriosVisibles,
+
+                            key = { recordatorio ->
+
+                                recordatorio.id
+                            }
+
+                        ) { recordatorio ->
+
+
+                            RecordatorioCard(
+
+                                recordatorio =
+                                    recordatorio,
+
+                                onClick = {
+
+                                    onDetalleClick(
+                                        recordatorio.id
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ============================================
+// 8. PANEL DE SINCRONIZACION
+// ============================================
+
+@Composable
+private fun PanelSincronizacion(
+
+    cantidadPendientes: Int,
+
+    sincronizando: Boolean,
+
+    ultimoResultado: ResultadoSincronizacion?,
+
+    errorSincronizacion: String?,
+
+    onSincronizar: () -> Unit,
+
+    onReintentar: () -> Unit,
+
+    onCancelar: () -> Unit,
+
+    onLimpiarResultado: () -> Unit
+
+) {
+
+
+    Card(
+
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        colors =
+            CardDefaults.cardColors(
+
+                containerColor =
+                    MaterialTheme.colorScheme
+                        .secondaryContainer
+            )
+
+    ) {
+
+
+        Column(
+
+            modifier =
+                Modifier.padding(16.dp),
+
+            verticalArrangement =
+                Arrangement.spacedBy(10.dp)
+
+        ) {
+
+
+            Text(
+
+                text =
+                    "Sincronizacion",
+
+                style =
+                    MaterialTheme.typography.titleLarge,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Text(
+
+                text =
+                    "Almacenamiento local activo",
+
+                style =
+                    MaterialTheme.typography.bodySmall
+            )
+
+
+            HorizontalDivider()
+
+
+            // ================================
+            // 9. CONTADOR DE PENDIENTES
+            // ================================
+
+            Row(
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.CenterVertically
+
+            ) {
+
+
+                Column(
+
+                    modifier =
+                        Modifier.weight(1f)
+
+                ) {
+
+                    Text(
+
+                        text =
+                            "Pendientes o con error",
+
+                        style =
+                            MaterialTheme.typography.bodyMedium
+                    )
+
+
+                    Text(
+
+                        text =
+                            cantidadPendientes.toString(),
+
+                        style =
+                            MaterialTheme.typography.headlineMedium,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        color =
+
+                            if (cantidadPendientes > 0) {
+
+                                MaterialTheme.colorScheme
+                                    .tertiary
+
+                            } else {
+
+                                MaterialTheme.colorScheme
+                                    .primary
+                            }
+                    )
+                }
+
+
+                Text(
+
+                    text =
+
+                        if (cantidadPendientes > 0) {
+
+                            "Cambios locales\npor sincronizar"
+
+                        } else {
+
+                            "Sin pendientes\nlocales"
+                        },
+
+                    style =
+                        MaterialTheme.typography.bodySmall
+                )
+            }
+
+
+            // ================================
+            // 10. SINCRONIZACION EN EJECUCION
+            // ================================
+
+            if (sincronizando) {
+
+
+                LinearProgressIndicator(
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+                )
+
+
+                Text(
+
+                    text =
+                        "Sincronizando con el servidor...",
+
+                    style =
+                        MaterialTheme.typography.bodyMedium
+                )
+
+
+                OutlinedButton(
+
+                    onClick =
+                        onCancelar,
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+
+                ) {
+
+                    Text("Cancelar sincronizacion")
+                }
+
+
+            } else {
+
+
+                // ============================
+                // 11. BOTON SINCRONIZAR
+                // ============================
+
+                Button(
+
+                    onClick =
+                        onSincronizar,
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+
+                ) {
+
+                    Text("Sincronizar ahora")
+                }
+            }
+
+
+            // ================================
+            // 12. RESULTADO DE SINCRONIZACION
+            // ================================
+
+            if (!sincronizando) {
+
+
+                if (errorSincronizacion != null) {
+
+
+                    Card(
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        colors =
+                            CardDefaults.cardColors(
+
+                                containerColor =
+                                    MaterialTheme.colorScheme
+                                        .errorContainer
+                            )
 
                     ) {
 
+
                         Column(
 
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
+                            modifier =
+                                Modifier.padding(12.dp),
 
                             verticalArrangement =
-                                Arrangement.spacedBy(12.dp)
+                                Arrangement.spacedBy(6.dp)
 
                         ) {
 
+
                             Text(
 
-                                text = estado.mensaje,
+                                text =
+                                    "Sincronizacion no completada",
+
+                                fontWeight =
+                                    FontWeight.Bold,
+
+                                color =
+                                    MaterialTheme.colorScheme
+                                        .onErrorContainer
+                            )
+
+
+                            Text(
+
+                                text =
+                                    errorSincronizacion,
+
+                                color =
+                                    MaterialTheme.colorScheme
+                                        .onErrorContainer
+                            )
+
+
+                            Text(
+
+                                text =
+                                    "Los datos locales se conservan.",
+
+                                style =
+                                    MaterialTheme.typography.bodySmall,
+
+                                color =
+                                    MaterialTheme.colorScheme
+                                        .onErrorContainer
+                            )
+                        }
+                    }
+
+
+                    OutlinedButton(
+
+                        onClick =
+                            onReintentar,
+
+                        modifier =
+                            Modifier.fillMaxWidth()
+
+                    ) {
+
+                        Text("Reintentar sincronizacion")
+                    }
+
+
+                } else {
+
+
+                    when (ultimoResultado) {
+
+
+                        null -> {
+
+                            Text(
+
+                                text =
+                                    "Ultimo resultado: Sin ejecutar",
+
+                                style =
+                                    MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+
+                        is ResultadoSincronizacion.Exito -> {
+
+                            Text(
+
+                                text =
+                                    "Sincronizacion completada correctamente.",
+
+                                color =
+                                    MaterialTheme.colorScheme.primary,
+
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                        }
+
+
+                        is ResultadoSincronizacion.SinCambios -> {
+
+                            Text(
+
+                                text =
+                                    "Sincronizacion completada. " +
+                                            "No se encontraron cambios.",
+
+                                color =
+                                    MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+
+                        is ResultadoSincronizacion.Parcial -> {
+
+                            Text(
+
+                                text =
+                                    ultimoResultado.mensaje,
+
+                                color =
+                                    MaterialTheme.colorScheme.tertiary
+                            )
+
+
+                            OutlinedButton(
+
+                                onClick =
+                                    onReintentar,
+
+                                modifier =
+                                    Modifier.fillMaxWidth()
+
+                            ) {
+
+                                Text("Reintentar sincronizacion")
+                            }
+                        }
+
+
+                        is ResultadoSincronizacion.Error -> {
+
+                            Text(
+
+                                text =
+                                    ultimoResultado.mensaje,
 
                                 color =
                                     MaterialTheme.colorScheme.error
                             )
 
-                            Button(
 
-                                onClick = {
-                                    viewModel.reintentar()
-                                }
+                            OutlinedButton(
+
+                                onClick =
+                                    onReintentar,
+
+                                modifier =
+                                    Modifier.fillMaxWidth()
 
                             ) {
-                                Text("Reintentar")
+
+                                Text("Reintentar sincronizacion")
                             }
                         }
                     }
                 }
+
+
+                // ============================
+                // 13. LIMPIAR RESULTADO
+                // ============================
+
+                if (
+                    ultimoResultado != null ||
+                    errorSincronizacion != null
+                ) {
+
+
+                    TextButton(
+
+                        onClick =
+                            onLimpiarResultado,
+
+                        modifier =
+                            Modifier.align(Alignment.End)
+
+                    ) {
+
+                        Text("Limpiar resultado")
+                    }
+                }
             }
         }
     }
 }
 
-// =============================================
-// API 3: FILTRAR Y ORDENAR RECORDATORIOS
-// =============================================
 
-private fun aplicarPreferencias(
+// ============================================
+// 14. PANEL DE PREFERENCIAS
+// ============================================
 
-    recordatorios: List<Recordatorio>,
+@Composable
+private fun PanelPreferencias(
 
-    preferencias: PreferenciasUsuario
+    preferencias: PreferenciasUsuario,
 
-): List<Recordatorio> {
+    onConfiguracionClick: () -> Unit
 
-    // Filtrar recordatorios completados
-    val listaFiltrada = if (
-        preferencias.mostrarCompletados
+) {
+
+
+    OutlinedCard(
+
+        modifier =
+            Modifier.fillMaxWidth()
+
     ) {
 
-        recordatorios
 
-    } else {
+        Column(
 
-        recordatorios.filter {
+            modifier =
+                Modifier.padding(12.dp),
 
-            it.estado != EstadoRecordatorio.Completado
-        }
-    }
+            verticalArrangement =
+                Arrangement.spacedBy(4.dp)
 
-    // Aplicar criterio de ordenamiento
-    return when (preferencias.orden) {
+        ) {
 
-        OrdenRecordatorios.CREACION -> {
 
-            listaFiltrada.sortedBy {
-                it.id
-            }
-        }
+            Text(
 
-        OrdenRecordatorios.TITULO -> {
+                text =
+                    "Preferencias activas",
 
-            listaFiltrada.sortedBy {
-                it.titulo.lowercase()
-            }
-        }
-
-        OrdenRecordatorios.PRIORIDAD -> {
-
-            listaFiltrada.sortedWith(
-
-                compareBy<Recordatorio> {
-
-                    when (it.prioridad) {
-
-                        Prioridad.Alta -> 0
-
-                        Prioridad.Media -> 1
-
-                        Prioridad.Baja -> 2
-                    }
-
-                }.thenBy {
-                    it.id
-                }
+                fontWeight =
+                    FontWeight.Bold
             )
+
+
+            Text(
+
+                text =
+                    "Orden: ${preferencias.orden.nombre}",
+
+                style =
+                    MaterialTheme.typography.bodySmall
+            )
+
+
+            Text(
+
+                text =
+                    "Mostrar completados: " +
+
+                            if (preferencias.mostrarCompletados) {
+
+                                "Si"
+
+                            } else {
+
+                                "No"
+                            },
+
+                style =
+                    MaterialTheme.typography.bodySmall
+            )
+
+
+            Text(
+
+                text =
+                    "Tema: " +
+
+                            if (preferencias.temaOscuro) {
+
+                                "Oscuro"
+
+                            } else {
+
+                                "Claro"
+                            },
+
+                style =
+                    MaterialTheme.typography.bodySmall
+            )
+
+
+            TextButton(
+
+                onClick =
+                    onConfiguracionClick,
+
+                modifier =
+                    Modifier.align(Alignment.End)
+
+            ) {
+
+                Text("Modificar preferencias")
+            }
         }
     }
 }
 
-// =============================================
-// TARJETA DE RECORDATORIO
-// =============================================
+
+// ============================================
+// 15. CONTROLES DE SIMULACION
+// ============================================
+
+@Composable
+private fun PanelSimulaciones(
+
+    viewModel: RecordatoriosViewModel
+
+) {
+
+
+    OutlinedCard(
+
+        modifier =
+            Modifier.fillMaxWidth()
+
+    ) {
+
+
+        Column(
+
+            modifier =
+                Modifier.padding(12.dp),
+
+            verticalArrangement =
+                Arrangement.spacedBy(4.dp)
+
+        ) {
+
+
+            Text(
+
+                text =
+                    "Controles de prueba",
+
+                fontWeight =
+                    FontWeight.SemiBold,
+
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+
+            Row(
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceEvenly
+
+            ) {
+
+
+                TextButton(
+
+                    onClick = {
+
+                        viewModel.simularLoading()
+                    }
+
+                ) {
+
+                    Text("Loading")
+                }
+
+
+                TextButton(
+
+                    onClick = {
+
+                        viewModel.vaciarRecordatorios()
+                    }
+
+                ) {
+
+                    Text("Empty")
+                }
+
+
+                TextButton(
+
+                    onClick = {
+
+                        viewModel.provocarError()
+                    }
+
+                ) {
+
+                    Text("Error")
+                }
+            }
+
+
+            OutlinedButton(
+
+                onClick = {
+
+                    viewModel.restaurarRecordatorios()
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth()
+
+            ) {
+
+                Text("Restaurar datos")
+            }
+        }
+    }
+}
+
+
+// ============================================
+// 16. PANEL LISTADO VACIO
+// ============================================
+
+@Composable
+private fun PanelListadoVacio(
+
+    mensaje: String,
+
+    textoBoton: String,
+
+    onClick: () -> Unit
+
+) {
+
+
+    OutlinedCard(
+
+        modifier =
+            Modifier.fillMaxWidth()
+
+    ) {
+
+
+        Column(
+
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
+
+        ) {
+
+
+            Text(
+
+                text =
+                    mensaje,
+
+                style =
+                    MaterialTheme.typography.bodyLarge
+            )
+
+
+            Button(
+
+                onClick =
+                    onClick
+
+            ) {
+
+                Text(textoBoton)
+            }
+        }
+    }
+}
+
+
+// ============================================
+// 17. PANEL ERROR LOCAL
+// ============================================
+
+@Composable
+private fun PanelErrorLocal(
+
+    mensaje: String,
+
+    onReintentar: () -> Unit
+
+) {
+
+
+    Card(
+
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        colors =
+            CardDefaults.cardColors(
+
+                containerColor =
+                    MaterialTheme.colorScheme.errorContainer
+            )
+
+    ) {
+
+
+        Column(
+
+            modifier =
+                Modifier.padding(16.dp),
+
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
+
+        ) {
+
+
+            Text(
+
+                text =
+                    "Error al cargar datos locales",
+
+                fontWeight =
+                    FontWeight.Bold,
+
+                color =
+                    MaterialTheme.colorScheme.onErrorContainer
+            )
+
+
+            Text(
+
+                text =
+                    mensaje,
+
+                color =
+                    MaterialTheme.colorScheme.onErrorContainer
+            )
+
+
+            Button(
+
+                onClick =
+                    onReintentar
+
+            ) {
+
+                Text("Reintentar carga local")
+            }
+        }
+    }
+}
+
+
+// ============================================
+// 18. TARJETA DE RECORDATORIO
+// ============================================
 
 @Composable
 private fun RecordatorioCard(
@@ -504,69 +1221,206 @@ private fun RecordatorioCard(
 
 ) {
 
-    Card(
 
-        onClick = onClick,
+    val colorPrioridad =
 
-        modifier = Modifier.fillMaxWidth()
+        when (recordatorio.prioridad) {
+
+
+            Prioridad.Alta ->
+
+                MaterialTheme.colorScheme.error
+
+
+            Prioridad.Media ->
+
+                MaterialTheme.colorScheme.tertiary
+
+
+            Prioridad.Baja ->
+
+                MaterialTheme.colorScheme.primary
+        }
+
+
+    OutlinedCard(
+
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+
+                onClick()
+            }
 
     ) {
 
+
         Column(
 
-            modifier = Modifier.padding(16.dp),
+            modifier =
+                Modifier.padding(16.dp),
 
             verticalArrangement =
                 Arrangement.spacedBy(6.dp)
 
         ) {
 
+
             Text(
 
-                text = recordatorio.titulo,
+                text =
+                    recordatorio.titulo,
 
                 style =
-                    MaterialTheme.typography.titleMedium
+                    MaterialTheme.typography.titleMedium,
+
+                fontWeight =
+                    FontWeight.Bold
             )
 
-            if (!recordatorio.descripcion.isNullOrBlank()) {
+
+            if (
+                !recordatorio.descripcion.isNullOrBlank()
+            ) {
+
 
                 Text(
 
-                    text = recordatorio.descripcion.orEmpty(),
+                    text =
+                        recordatorio.descripcion.orEmpty(),
 
                     style =
                         MaterialTheme.typography.bodyMedium
                 )
             }
 
+
             HorizontalDivider()
 
-            Text(
-                text = "Categoría: ${recordatorio.categoria.nombre}"
-            )
+
+            Row(
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.SpaceBetween
+
+            ) {
+
+
+                Text(
+
+                    text =
+                        "Categoria: " +
+                                recordatorio.categoria.nombre,
+
+                    style =
+                        MaterialTheme.typography.bodySmall
+                )
+
+
+                Text(
+
+                    text =
+                        "Prioridad: " +
+                                recordatorio.prioridad.nombre,
+
+                    style =
+                        MaterialTheme.typography.bodySmall,
+
+                    fontWeight =
+                        FontWeight.Bold,
+
+                    color =
+                        colorPrioridad
+                )
+            }
+
 
             Text(
 
-                text = "Prioridad: ${recordatorio.prioridad.nombre}",
+                text =
+                    "Estado: " +
+                            recordatorio.estado.nombre,
 
-                color = when (recordatorio.prioridad) {
-
-                    Prioridad.Alta ->
-                        MaterialTheme.colorScheme.error
-
-                    Prioridad.Media ->
-                        MaterialTheme.colorScheme.primary
-
-                    Prioridad.Baja ->
-                        MaterialTheme.colorScheme.secondary
-                }
-            )
-
-            Text(
-                text = "Estado: ${recordatorio.estado.nombre}"
+                style =
+                    MaterialTheme.typography.bodySmall
             )
         }
     }
 }
- 
+
+
+// ============================================
+// 19. APLICAR PREFERENCIAS
+// ============================================
+
+private fun aplicarPreferencias(
+
+    recordatorios: List<Recordatorio>,
+
+    preferencias: PreferenciasUsuario
+
+): List<Recordatorio> {
+
+
+    val filtrados =
+
+        if (preferencias.mostrarCompletados) {
+
+            recordatorios
+
+        } else {
+
+            recordatorios.filter {
+
+                    recordatorio ->
+
+                recordatorio.estado !=
+                        EstadoRecordatorio.Completado
+            }
+        }
+
+
+    return when (preferencias.orden) {
+
+
+        OrdenRecordatorios.CREACION -> {
+
+            // Room ya entrega los registros
+            // ordenados por fechaCreacion e ID.
+
+            filtrados
+        }
+
+
+        OrdenRecordatorios.TITULO -> {
+
+            filtrados.sortedBy {
+
+                    recordatorio ->
+
+                recordatorio.titulo.lowercase()
+            }
+        }
+
+
+        OrdenRecordatorios.PRIORIDAD -> {
+
+            filtrados.sortedBy {
+
+                    recordatorio ->
+
+                when (recordatorio.prioridad) {
+
+                    Prioridad.Alta -> 0
+
+                    Prioridad.Media -> 1
+
+                    Prioridad.Baja -> 2
+                }
+            }
+        }
+    }
+}

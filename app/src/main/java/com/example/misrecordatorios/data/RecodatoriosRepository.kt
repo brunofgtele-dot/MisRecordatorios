@@ -1,38 +1,102 @@
+
 package com.example.misrecordatorios.data
 
 import com.example.misrecordatorios.Categoria
 import com.example.misrecordatorios.EstadoRecordatorio
 import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.Recordatorio
+
 import com.example.misrecordatorios.data.local.RecordatorioDao
 import com.example.misrecordatorios.data.local.RecordatorioEntity
+import com.example.misrecordatorios.data.local.RecordatoriosDatabase
 import com.example.misrecordatorios.data.local.toDomain
 import com.example.misrecordatorios.data.local.toDomainList
 import com.example.misrecordatorios.data.local.toEntity
+
+import com.example.misrecordatorios.data.sync.RecordatoriosSyncManager
+import com.example.misrecordatorios.data.sync.ResultadoSincronizacion
+
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+
 class RecordatoriosRepository(
 
-    private val dao: RecordatorioDao
+    private val dao: RecordatorioDao,
+
+    private val syncManager: RecordatoriosSyncManager? = null
 
 ) {
 
-    // =========================================
-    // 1. OBSERVAR RECORDATORIOS
-    // =========================================
+    // ============================================
+    // 1. CONSTRUCTOR CON BASE DE DATOS ROOM
+    // ============================================
+
+    constructor(
+
+        database: RecordatoriosDatabase
+
+    ) : this(
+
+        dao = database.recordatorioDao(),
+
+        syncManager = RecordatoriosSyncManager(
+            database = database
+        )
+    )
+
+
+    // ============================================
+    // 2. CONTROL DE SINCRONIZACION
+    // ============================================
+
+    private val mutexRepositorio =
+        Mutex()
+
+
+    private val _sincronizando =
+        MutableStateFlow(false)
+
+
+    val sincronizando: StateFlow<Boolean> =
+        _sincronizando.asStateFlow()
+
+
+    private val _ultimoResultadoSincronizacion =
+        MutableStateFlow<ResultadoSincronizacion?>(
+            null
+        )
+
+
+    val ultimoResultadoSincronizacion:
+            StateFlow<ResultadoSincronizacion?> =
+        _ultimoResultadoSincronizacion.asStateFlow()
+
+
+    // ============================================
+    // 3. OBSERVAR RECORDATORIOS LOCALES
+    // ============================================
 
     val recordatorios: Flow<List<Recordatorio>> =
 
-        dao.observarTodos().map { entidades ->
+        dao.observarTodos().map {
+
+                entidades ->
 
             entidades.toDomainList()
         }
 
-    // =========================================
-    // 2. CONSULTAR TODOS LOS RECORDATORIOS
-    // =========================================
+
+    // ============================================
+    // 4. OBTENER TODOS LOS RECORDATORIOS
+    // ============================================
 
     suspend fun obtenerRecordatorios():
             List<Recordatorio> {
@@ -40,43 +104,61 @@ class RecordatoriosRepository(
         return recordatorios.first()
     }
 
-    // =========================================
-    // 3. CONSULTAR RECORDATORIO POR ID
-    // =========================================
+
+    // ============================================
+    // 5. OBTENER RECORDATORIO POR ID
+    // ============================================
 
     suspend fun obtenerPorId(
+
         id: Int
+
     ): Recordatorio? {
 
-        return dao.obtenerPorId(id)?.toDomain()
+        return dao.obtenerPorId(id)
+            ?.toDomain()
     }
 
+
+    // ============================================
+    // 6. OBSERVAR RECORDATORIO POR ID
+    // ============================================
+
     fun observarPorId(
+
         id: Int
+
     ): Flow<Recordatorio?> {
 
-        return dao.observarPorId(id).map { entidad ->
+        return dao.observarPorId(id).map {
+
+                entidad ->
 
             entidad?.toDomain()
         }
     }
 
-    // =========================================
-    // 4. CREAR RECORDATORIOS
-    // =========================================
+
+    // ============================================
+    // 7. GUARDAR RECORDATORIO LOCAL
+    // ============================================
 
     suspend fun guardar(
+
         recordatorio: Recordatorio
+
     ): Long {
 
-        val entidad = recordatorio.toEntity()
+        val entidad =
+            recordatorio.toEntity()
 
         return dao.insertar(entidad)
     }
 
-    // =========================================
-    // 5. ACTUALIZAR ESTADO
-    // =========================================
+
+    // ============================================
+    // 8. ACTUALIZAR ESTADO DEL RECORDATORIO
+    // ============================================
 
     suspend fun actualizarEstado(
 
@@ -86,12 +168,14 @@ class RecordatoriosRepository(
 
     ) {
 
-        val filasActualizadas = dao.actualizarEstado(
+        val filasActualizadas =
+            dao.actualizarEstado(
 
-            id = id,
+                id = id,
 
-            nuevoEstado = nuevoEstado.nombre
-        )
+                nuevoEstado =
+                    nuevoEstado.nombre
+            )
 
         check(filasActualizadas > 0) {
 
@@ -99,9 +183,10 @@ class RecordatoriosRepository(
         }
     }
 
-    // =========================================
-    // 6. ACTUALIZAR DATOS DEL RECORDATORIO
-    // =========================================
+
+    // ============================================
+    // 9. ACTUALIZAR DATOS DEL RECORDATORIO
+    // ============================================
 
     suspend fun actualizarDatos(
 
@@ -127,20 +212,29 @@ class RecordatoriosRepository(
             "El titulo no puede superar 100 caracteres"
         }
 
-        val filasActualizadas = dao.actualizarDatos(
 
-            id = id,
+        val filasActualizadas =
+            dao.actualizarDatos(
 
-            titulo = titulo.trim(),
+                id = id,
 
-            descripcion = descripcion
-                ?.trim()
-                ?.takeIf { it.isNotBlank() },
+                titulo =
+                    titulo.trim(),
 
-            categoria = categoria.nombre,
+                descripcion =
+                    descripcion
+                        ?.trim()
+                        ?.takeIf {
+                            it.isNotBlank()
+                        },
 
-            prioridad = prioridad.nombre
-        )
+                categoria =
+                    categoria.nombre,
+
+                prioridad =
+                    prioridad.nombre
+            )
+
 
         check(filasActualizadas > 0) {
 
@@ -148,15 +242,20 @@ class RecordatoriosRepository(
         }
     }
 
-    // =========================================
-    // 7. ELIMINAR RECORDATORIOS
-    // =========================================
+
+    // ============================================
+    // 10. ELIMINAR RECORDATORIO LOGICAMENTE
+    // ============================================
 
     suspend fun eliminar(
+
         id: Int
+
     ) {
 
-        val filasActualizadas = dao.eliminar(id)
+        val filasActualizadas =
+            dao.eliminar(id)
+
 
         check(filasActualizadas > 0) {
 
@@ -164,9 +263,10 @@ class RecordatoriosRepository(
         }
     }
 
-    // =========================================
-    // 8. FILTRAR POR ESTADO
-    // =========================================
+
+    // ============================================
+    // 11. FILTRAR POR ESTADO
+    // ============================================
 
     fun observarPorEstado(
 
@@ -175,18 +275,19 @@ class RecordatoriosRepository(
     ): Flow<List<Recordatorio>> {
 
         return dao.observarPorEstado(
-
             estado.nombre
+        ).map {
 
-        ).map { entidades ->
+                entidades ->
 
             entidades.toDomainList()
         }
     }
 
-    // =========================================
-    // 9. FILTRAR POR CATEGORIA
-    // =========================================
+
+    // ============================================
+    // 12. FILTRAR POR CATEGORIA
+    // ============================================
 
     fun observarPorCategoria(
 
@@ -195,18 +296,19 @@ class RecordatoriosRepository(
     ): Flow<List<Recordatorio>> {
 
         return dao.observarPorCategoria(
-
             categoria.nombre
+        ).map {
 
-        ).map { entidades ->
+                entidades ->
 
             entidades.toDomainList()
         }
     }
 
-    // =========================================
-    // 10. FILTRAR POR PRIORIDAD
-    // =========================================
+
+    // ============================================
+    // 13. FILTRAR POR PRIORIDAD
+    // ============================================
 
     fun observarPorPrioridad(
 
@@ -215,28 +317,39 @@ class RecordatoriosRepository(
     ): Flow<List<Recordatorio>> {
 
         return dao.observarPorPrioridad(
-
             prioridad.nombre
+        ).map {
 
-        ).map { entidades ->
+                entidades ->
 
             entidades.toDomainList()
         }
     }
 
-    // =========================================
-    // 11. CONTROL DE SINCRONIZACION
-    // =========================================
+
+    // ============================================
+    // 14. OBSERVAR CANTIDAD DE PENDIENTES
+    // ============================================
 
     val cantidadPendientes: Flow<Int> =
 
         dao.observarCantidadPendientes()
+
+
+    // ============================================
+    // 15. OBTENER PENDIENTES DE SINCRONIZACION
+    // ============================================
 
     suspend fun obtenerPendientesSincronizacion():
             List<RecordatorioEntity> {
 
         return dao.obtenerPendientesSincronizacion()
     }
+
+
+    // ============================================
+    // 16. MARCAR RECORDATORIO SINCRONIZADO
+    // ============================================
 
     suspend fun marcarSincronizado(
 
@@ -255,6 +368,11 @@ class RecordatoriosRepository(
         ) > 0
     }
 
+
+    // ============================================
+    // 17. MARCAR ERROR DE SINCRONIZACION
+    // ============================================
+
     suspend fun marcarErrorSincronizacion(
 
         uuid: String,
@@ -272,18 +390,90 @@ class RecordatoriosRepository(
         ) > 0
     }
 
-    // =========================================
-    // 12. CONSULTAS DE CONTROL
-    // =========================================
+
+    // ============================================
+    // 18. CONTAR RECORDATORIOS VISIBLES
+    // ============================================
 
     suspend fun contarRecordatorios(): Int {
 
         return dao.contarRecordatorios()
     }
 
+
+    // ============================================
+    // 19. CONTAR REGISTROS TOTALES
+    // ============================================
+
     suspend fun contarRegistrosTotales(): Int {
 
         return dao.contarRegistrosTotales()
+    }
+
+
+    // ============================================
+    // 20. VERIFICAR DISPONIBILIDAD DEL SYNC MANAGER
+    // ============================================
+
+    fun tieneSincronizadorConfigurado(): Boolean {
+
+        return syncManager != null
+    }
+
+
+    // ============================================
+    // 21. EJECUTAR SINCRONIZACION LOCAL-FIRST
+    // ============================================
+
+    suspend fun sincronizar(
+
+        reintentarErrores: Boolean = true
+
+    ): ResultadoSincronizacion {
+
+        val manager = checkNotNull(syncManager) {
+
+            "El sincronizador no esta configurado " +
+                    "en el repositorio."
+        }
+
+
+        return mutexRepositorio.withLock {
+
+            _sincronizando.value = true
+
+            try {
+
+                val resultado =
+                    manager.sincronizar(
+
+                        reintentarErrores =
+                            reintentarErrores
+                    )
+
+
+                _ultimoResultadoSincronizacion.value =
+                    resultado
+
+
+                resultado
+
+            } finally {
+
+                _sincronizando.value = false
+            }
+        }
+    }
+
+
+    // ============================================
+    // 22. LIMPIAR ULTIMO RESULTADO
+    // ============================================
+
+    fun limpiarUltimoResultadoSincronizacion() {
+
+        _ultimoResultadoSincronizacion.value =
+            null
     }
 }
  

@@ -102,7 +102,7 @@ fun ListadoScreen(
                 OutlinedButton(
 
                     onClick = {
-                        viewModel.cargarRecordatorios()
+                        viewModel.simularLoading()
                     },
 
                     modifier = Modifier.weight(1f),

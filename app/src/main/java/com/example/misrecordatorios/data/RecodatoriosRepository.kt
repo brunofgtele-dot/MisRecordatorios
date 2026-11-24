@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-class RecordatoriosRoomRepository(
+class RecordatoriosRepository(
 
     private val dao: RecordatorioDao
 

@@ -8,7 +8,7 @@ import com.example.misrecordatorios.Categoria
 import com.example.misrecordatorios.EstadoRecordatorio
 import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.Recordatorio
-import com.example.misrecordatorios.data.RecordatoriosRoomRepository
+import com.example.misrecordatorios.data.RecordatoriosRepository
 import com.example.misrecordatorios.data.local.RecordatoriosDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -30,7 +30,7 @@ class RecordatoriosViewModel(
         RecordatoriosDatabase.obtenerInstancia(application)
 
     private val repository =
-        RecordatoriosRoomRepository(
+        RecordatoriosRepository(
             database.recordatorioDao()
         )
 
@@ -59,6 +59,14 @@ class RecordatoriosViewModel(
 
     val errorOperacion: StateFlow<String?> =
         _errorOperacion.asStateFlow()
+
+    private val _operacionState =
+        MutableStateFlow<OperacionUiState>(
+            OperacionUiState.Idle
+        )
+
+    val operacionState: StateFlow<OperacionUiState> =
+        _operacionState.asStateFlow()
 
     // =========================================
     // 3. CONTROL DE OBSERVACION
@@ -265,16 +273,16 @@ class RecordatoriosViewModel(
     // 9. ACTUALIZAR ESTADO
     // =========================================
 
+
+
     fun actualizarEstado(
-
         id: Int,
-
         nuevoEstado: EstadoRecordatorio
-
     ) {
 
-        ejecutarOperacion {
-
+        ejecutarOperacion(
+            resultado = OperacionUiState.Actualizado
+        ) {
             repository.actualizarEstado(
                 id = id,
                 nuevoEstado = nuevoEstado
@@ -282,85 +290,92 @@ class RecordatoriosViewModel(
         }
     }
 
-    // =========================================
-    // 10. ACTUALIZAR DATOS
-    // =========================================
-
     fun actualizarDatos(
-
         id: Int,
-
         titulo: String,
-
         descripcion: String?,
-
         categoria: Categoria,
-
         prioridad: Prioridad
-
     ) {
 
-        ejecutarOperacion {
-
+        ejecutarOperacion(
+            resultado = OperacionUiState.Actualizado
+        ) {
             repository.actualizarDatos(
-
                 id = id,
-
                 titulo = titulo,
-
                 descripcion = descripcion,
-
                 categoria = categoria,
-
                 prioridad = prioridad
             )
         }
     }
 
-    // =========================================
-    // 11. ELIMINAR RECORDATORIO
-    // =========================================
-
     fun eliminarRecordatorio(
         id: Int
     ) {
 
-        ejecutarOperacion {
-
+        ejecutarOperacion(
+            resultado = OperacionUiState.Eliminado
+        ) {
             repository.eliminar(id)
         }
     }
 
-    // =========================================
-    // 12. MANEJO DE ERRORES DE OPERACION
-    // =========================================
-
     private fun ejecutarOperacion(
+        resultado: OperacionUiState,
         operacion: suspend () -> Unit
     ) {
+
+        if (_operacionState.value ==
+            OperacionUiState.Procesando
+        ) {
+            return
+        }
+
+        _operacionState.value =
+            OperacionUiState.Procesando
+
+        _errorOperacion.value = null
 
         viewModelScope.launch {
 
             try {
 
-                _errorOperacion.value = null
-
                 operacion()
+
+                _operacionState.value = resultado
 
             } catch (e: CancellationException) {
 
                 throw e
 
-            } catch (e: IllegalArgumentException) {
-
-                _errorOperacion.value =
-                    e.message ?: "Datos invalidos."
-
             } catch (e: Exception) {
 
-                _errorOperacion.value =
-                    "No se pudo completar la operacion."
+                val mensaje =
+                    if (e is IllegalArgumentException) {
+                        e.message ?: "Datos invalidos."
+                    } else {
+                        "No se pudo completar la operacion."
+                    }
+
+                _errorOperacion.value = mensaje
+
+                _operacionState.value =
+                    OperacionUiState.Error(mensaje)
             }
+        }
+    }
+
+    fun reiniciarOperacion() {
+
+        if (_operacionState.value !=
+            OperacionUiState.Procesando
+        ) {
+            _operacionState.value =
+                OperacionUiState.Idle
+
+            _errorOperacion.value = null
         }
     }
 

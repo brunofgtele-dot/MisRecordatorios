@@ -178,6 +178,9 @@ dependencies {
         "com.squareup.okhttp3:logging-interceptor:4.12.0"
     )
 
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0"
+    )
+
 
     // ========================================
     // 9. PRUEBAS UNITARIAS

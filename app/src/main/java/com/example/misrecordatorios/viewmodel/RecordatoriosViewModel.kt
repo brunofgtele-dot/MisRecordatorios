@@ -14,6 +14,8 @@ import com.example.misrecordatorios.data.RecordatoriosRepository
 import com.example.misrecordatorios.data.local.RecordatoriosDatabase
 import com.example.misrecordatorios.data.network.MonitorConectividad
 import com.example.misrecordatorios.data.sync.ResultadoSincronizacion
+import com.example.misrecordatorios.data.sync.ResumenSincronizacion
+import com.example.misrecordatorios.data.sync.SincronizacionAutomatica
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -25,6 +27,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class RecordatoriosViewModel(
     application: Application
@@ -107,7 +112,7 @@ class RecordatoriosViewModel(
     val cantidadPendientes: StateFlow<Int> =
         repository.cantidadPendientes.stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.Eagerly,
             initialValue = 0
         )
 
@@ -146,8 +151,16 @@ class RecordatoriosViewModel(
 
     private var sincronizacionJob: Job? = null
 
+    private var reactivacionAutomaticaJob: Job? = null
+
     // ============================================
-    // 13. CONTROL DE SIMULACIONES
+    // 13. CONTROL DE CONCURRENCIA
+    // ============================================
+
+    private val sincronizacionMutex = Mutex()
+
+    // ============================================
+    // 14. CONTROL DE SIMULACIONES
     // ============================================
 
     private var simulacionActiva = false
@@ -156,17 +169,43 @@ class RecordatoriosViewModel(
             List<Recordatorio> = emptyList()
 
     // ============================================
-    // 14. INICIALIZACION
+    // 15. SINCRONIZACION AUTOMATICA
+    // ============================================
+
+    private val sincronizacionAutomatica =
+        SincronizacionAutomatica(
+
+            scope = viewModelScope,
+
+            conectado = conectado,
+
+            cantidadPendientes = cantidadPendientes,
+
+            sincronizando = sincronizando,
+
+            ejecutarSincronizacion = {
+
+                ejecutarSincronizacionInterna(
+                    reintentarErrores = true
+                )
+            }
+        )
+
+    // ============================================
+    // 16. INICIALIZACION
     // ============================================
 
     init {
+
         monitorConectividad.iniciarMonitoreo()
 
         cargarRecordatorios()
+
+        sincronizacionAutomatica.iniciar()
     }
 
     // ============================================
-    // 15. OBSERVAR RECORDATORIOS DESDE ROOM
+    // 17. OBSERVAR RECORDATORIOS DESDE ROOM
     // ============================================
 
     fun cargarRecordatorios() {
@@ -211,7 +250,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 16. PUBLICAR ESTADO DEL LISTADO
+    // 18. PUBLICAR ESTADO DEL LISTADO
     // ============================================
 
     private fun publicarRecordatorios(
@@ -232,7 +271,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 17. GUARDAR RECORDATORIO LOCALMENTE
+    // 19. GUARDAR RECORDATORIO LOCALMENTE
     // ============================================
 
     fun guardarRecordatorio(
@@ -246,6 +285,7 @@ class RecordatoriosViewModel(
             _guardadoState.value ==
             GuardadoUiState.Saving
         ) {
+
             return
         }
 
@@ -311,6 +351,8 @@ class RecordatoriosViewModel(
                 _guardadoState.value =
                     GuardadoUiState.Saved
 
+                notificarCambioLocal()
+
             } catch (e: CancellationException) {
 
                 throw e
@@ -328,7 +370,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 18. REINICIAR ESTADO DE GUARDADO
+    // 20. REINICIAR ESTADO DE GUARDADO
     // ============================================
 
     fun reiniciarGuardado() {
@@ -344,7 +386,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 19. OBTENER RECORDATORIO POR ID
+    // 21. OBTENER RECORDATORIO POR ID
     // ============================================
 
     fun obtenerRecordatorio(
@@ -352,12 +394,13 @@ class RecordatoriosViewModel(
     ): Recordatorio? {
 
         return ultimosRecordatorios.firstOrNull {
+
                 recordatorio -> recordatorio.id == id
         }
     }
 
     // ============================================
-    // 20. ACTUALIZAR ESTADO LOCAL
+    // 22. ACTUALIZAR ESTADO LOCAL
     // ============================================
 
     fun actualizarEstado(
@@ -377,7 +420,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 21. ACTUALIZAR DATOS LOCALES
+    // 23. ACTUALIZAR DATOS LOCALES
     // ============================================
 
     fun actualizarDatos(
@@ -403,7 +446,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 22. ELIMINAR RECORDATORIO LOCALMENTE
+    // 24. ELIMINAR RECORDATORIO LOCALMENTE
     // ============================================
 
     fun eliminarRecordatorio(
@@ -419,7 +462,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 23. EJECUTAR OPERACIONES CRUD
+    // 25. EJECUTAR OPERACIONES CRUD
     // ============================================
 
     private fun ejecutarOperacion(
@@ -431,6 +474,7 @@ class RecordatoriosViewModel(
             _operacionState.value ==
             OperacionUiState.Procesando
         ) {
+
             return
         }
 
@@ -448,6 +492,8 @@ class RecordatoriosViewModel(
                 recuperarObservacionSiNecesario()
 
                 _operacionState.value = resultado
+
+                notificarCambioLocal()
 
             } catch (e: CancellationException) {
 
@@ -478,7 +524,22 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 24. RECUPERAR OBSERVACION DE ROOM
+    // 26. NOTIFICAR CAMBIOS LOCALES
+    // ============================================
+
+    private fun notificarCambioLocal() {
+
+        if (
+            sincronizacionAutomatica.estaActiva()
+        ) {
+
+            sincronizacionAutomatica
+                .notificarCambioLocal()
+        }
+    }
+
+    // ============================================
+    // 27. RECUPERAR OBSERVACION DE ROOM
     // ============================================
 
     private fun recuperarObservacionSiNecesario() {
@@ -493,7 +554,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 25. REINICIAR ESTADO DE OPERACION
+    // 28. REINICIAR ESTADO DE OPERACION
     // ============================================
 
     fun reiniciarOperacion() {
@@ -509,7 +570,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 26. LIMPIAR ERROR LOCAL
+    // 29. LIMPIAR ERROR LOCAL
     // ============================================
 
     fun limpiarErrorOperacion() {
@@ -518,7 +579,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 27. REINTENTAR CARGA LOCAL
+    // 30. REINTENTAR CARGA LOCAL
     // ============================================
 
     fun reintentar() {
@@ -527,23 +588,30 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 28. SINCRONIZAR RECORDATORIOS
+    // 31. EJECUCION CENTRALIZADA DE SINCRONIZACION
     // ============================================
 
-    fun sincronizarRecordatorios(
+    private suspend fun ejecutarSincronizacionInterna(
         reintentarErrores: Boolean = true
-    ) {
+    ): ResultadoSincronizacion {
 
-        if (
-            sincronizacionJob?.isActive == true ||
-            sincronizando.value
-        ) {
-            return
-        }
+        return sincronizacionMutex.withLock {
 
-        _errorSincronizacion.value = null
+            if (!conectado.value) {
 
-        sincronizacionJob = viewModelScope.launch {
+                val mensaje =
+                    "No existe conexion de red."
+
+                _errorSincronizacion.value = mensaje
+
+                return@withLock ResultadoSincronizacion.Error(
+                    resumen = ResumenSincronizacion(),
+                    mensaje = mensaje,
+                    reintentable = true
+                )
+            }
+
+            _errorSincronizacion.value = null
 
             try {
 
@@ -578,21 +646,69 @@ class RecordatoriosViewModel(
                     }
                 }
 
+                resultado
+
             } catch (e: CancellationException) {
 
                 throw e
 
             } catch (e: Exception) {
 
-                _errorSincronizacion.value =
-                    "No se pudo ejecutar " +
-                            "la sincronizacion."
+                val mensaje =
+                    "No se pudo ejecutar la sincronizacion."
+
+                _errorSincronizacion.value = mensaje
+
+                ResultadoSincronizacion.Error(
+                    resumen = ResumenSincronizacion(),
+                    mensaje = mensaje,
+                    reintentable = false
+                )
             }
         }
     }
 
     // ============================================
-    // 29. REINTENTAR SINCRONIZACION
+    // 32. SINCRONIZACION MANUAL
+    // ============================================
+
+    fun sincronizarRecordatorios(
+        reintentarErrores: Boolean = true
+    ) {
+
+        if (
+            sincronizacionJob?.isActive == true ||
+            sincronizando.value
+        ) {
+
+            return
+        }
+
+        if (!conectado.value) {
+
+            _errorSincronizacion.value =
+                "No existe conexion de red."
+
+            return
+        }
+
+        reactivacionAutomaticaJob?.cancel()
+
+        sincronizacionJob = viewModelScope.launch {
+
+            ejecutarSincronizacionInterna(
+                reintentarErrores = reintentarErrores
+            )
+
+            if (!sincronizacionAutomatica.estaActiva()) {
+
+                sincronizacionAutomatica.iniciar()
+            }
+        }
+    }
+
+    // ============================================
+    // 33. REINTENTAR SINCRONIZACION
     // ============================================
 
     fun reintentarSincronizacion() {
@@ -603,16 +719,69 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 30. CANCELAR SINCRONIZACION
+    // 34. CANCELAR SINCRONIZACION
     // ============================================
 
     fun cancelarSincronizacion() {
 
+        reactivacionAutomaticaJob?.cancel()
+
+        sincronizacionAutomatica.detener()
+
         sincronizacionJob?.cancel()
+
+        reactivacionAutomaticaJob =
+            viewModelScope.launch {
+
+                // Esperar que termine la ejecucion cancelada.
+
+                sincronizacionMutex.withLock {
+
+                    // Barrera de sincronizacion.
+                }
+
+                // Evitar reiniciar inmediatamente
+                // una sincronizacion cancelada.
+
+                delay(30000L)
+
+                sincronizacionAutomatica.iniciar()
+            }
     }
 
     // ============================================
-    // 31. LIMPIAR ERROR DE SINCRONIZACION
+    // 35. ACTIVAR SINCRONIZACION AUTOMATICA
+    // ============================================
+
+    fun iniciarSincronizacionAutomatica() {
+
+        reactivacionAutomaticaJob?.cancel()
+
+        sincronizacionAutomatica.iniciar()
+    }
+
+    // ============================================
+    // 36. DESACTIVAR SINCRONIZACION AUTOMATICA
+    // ============================================
+
+    fun detenerSincronizacionAutomatica() {
+
+        reactivacionAutomaticaJob?.cancel()
+
+        sincronizacionAutomatica.detener()
+    }
+
+    // ============================================
+    // 37. CONSULTAR SINCRONIZACION AUTOMATICA
+    // ============================================
+
+    fun sincronizacionAutomaticaActiva(): Boolean {
+
+        return sincronizacionAutomatica.estaActiva()
+    }
+
+    // ============================================
+    // 38. LIMPIAR ERROR DE SINCRONIZACION
     // ============================================
 
     fun limpiarErrorSincronizacion() {
@@ -621,7 +790,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 32. LIMPIAR ULTIMO RESULTADO
+    // 39. LIMPIAR ULTIMO RESULTADO
     // ============================================
 
     fun limpiarUltimoResultadoSincronizacion() {
@@ -633,7 +802,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 33. SIMULAR ESTADO LOADING
+    // 40. SIMULAR ESTADO LOADING
     // ============================================
 
     fun simularLoading() {
@@ -654,7 +823,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 34. SIMULAR ESTADO EMPTY
+    // 41. SIMULAR ESTADO EMPTY
     // ============================================
 
     fun vaciarRecordatorios() {
@@ -668,7 +837,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 35. SIMULAR ESTADO ERROR
+    // 42. SIMULAR ESTADO ERROR
     // ============================================
 
     fun provocarError() {
@@ -686,7 +855,7 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 36. RESTAURAR OBSERVACION REAL
+    // 43. RESTAURAR OBSERVACION REAL
     // ============================================
 
     fun restaurarRecordatorios() {
@@ -695,12 +864,22 @@ class RecordatoriosViewModel(
     }
 
     // ============================================
-    // 37. LIBERAR RECURSOS DEL VIEWMODEL
+    // 44. LIBERAR RECURSOS DEL VIEWMODEL
     // ============================================
 
     override fun onCleared() {
 
+        reactivacionAutomaticaJob?.cancel()
+
+        sincronizacionAutomatica.detener()
+
         monitorConectividad.detenerMonitoreo()
+
+        observacionJob?.cancel()
+
+        simulacionJob?.cancel()
+
+        sincronizacionJob?.cancel()
 
         super.onCleared()
     }

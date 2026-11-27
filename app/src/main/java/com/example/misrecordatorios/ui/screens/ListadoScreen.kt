@@ -2,6 +2,7 @@ package com.example.misrecordatorios.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,6 +45,7 @@ import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.Recordatorio
 import com.example.misrecordatorios.data.preferences.OrdenRecordatorios
 import com.example.misrecordatorios.data.preferences.PreferenciasUsuario
+import com.example.misrecordatorios.data.sync.EstadoSincronizacion
 import com.example.misrecordatorios.data.sync.ResultadoSincronizacion
 import com.example.misrecordatorios.viewmodel.RecordatoriosUiState
 import com.example.misrecordatorios.viewmodel.RecordatoriosViewModel
@@ -278,6 +281,7 @@ fun ListadoScreen(
 
                             RecordatorioCard(
                                 recordatorio = recordatorio,
+                                temaOscuro = preferencias.temaOscuro,
                                 onClick = {
                                     onDetalleClick(recordatorio.id)
                                 }
@@ -873,6 +877,7 @@ private fun PanelErrorLocal(
 @Composable
 private fun RecordatorioCard(
     recordatorio: Recordatorio,
+    temaOscuro: Boolean,
     onClick: () -> Unit
 ) {
 
@@ -946,12 +951,137 @@ private fun RecordatorioCard(
                             recordatorio.estado.nombre,
                 style = MaterialTheme.typography.bodySmall
             )
+
+            HorizontalDivider()
+
+            // Indicador individual de sincronizacion
+
+            IndicadorEstadoSincronizacion(
+                estado = recordatorio.estadoSincronizacion,
+                temaOscuro = temaOscuro
+            )
         }
     }
 }
 
 // ============================================
-// 19. APLICAR PREFERENCIAS
+// 19. INDICADOR INDIVIDUAL DE SINCRONIZACION
+// ============================================
+
+@Composable
+private fun IndicadorEstadoSincronizacion(
+    estado: EstadoSincronizacion,
+    temaOscuro: Boolean
+) {
+
+    val colorIndicador = when (estado) {
+
+        EstadoSincronizacion.SINCRONIZADO -> {
+
+            if (temaOscuro) {
+                Color(0xFF81C784)
+            } else {
+                Color(0xFF2E7D32)
+            }
+        }
+
+        EstadoSincronizacion.PENDIENTE -> {
+
+            if (temaOscuro) {
+                Color(0xFFFFB74D)
+            } else {
+                Color(0xFFB45309)
+            }
+        }
+
+        EstadoSincronizacion.ERROR -> {
+
+            if (temaOscuro) {
+                Color(0xFFEF9A9A)
+            } else {
+                Color(0xFFC62828)
+            }
+        }
+    }
+
+    val colorFondo = when (estado) {
+
+        EstadoSincronizacion.SINCRONIZADO -> {
+
+            if (temaOscuro) {
+                Color(0xFF1B3A25)
+            } else {
+                Color(0xFFE8F5E9)
+            }
+        }
+
+        EstadoSincronizacion.PENDIENTE -> {
+
+            if (temaOscuro) {
+                Color(0xFF493218)
+            } else {
+                Color(0xFFFFF3E0)
+            }
+        }
+
+        EstadoSincronizacion.ERROR -> {
+
+            if (temaOscuro) {
+                Color(0xFF492525)
+            } else {
+                Color(0xFFFFEBEE)
+            }
+        }
+    }
+
+    val textoEstado = when (estado) {
+
+        EstadoSincronizacion.SINCRONIZADO ->
+            "Sincronizado"
+
+        EstadoSincronizacion.PENDIENTE ->
+            "Pendiente de sincronización"
+
+        EstadoSincronizacion.ERROR ->
+            "Error de sincronización"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = colorFondo,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(
+                horizontal = 10.dp,
+                vertical = 8.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(
+                    color = colorIndicador,
+                    shape = CircleShape
+                )
+        )
+
+        Text(
+            text = textoEstado,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = colorIndicador
+        )
+    }
+}
+
+// ============================================
+// 20. APLICAR PREFERENCIAS
 // ============================================
 
 private fun aplicarPreferencias(

@@ -5,6 +5,7 @@ import com.example.misrecordatorios.Categoria
 import com.example.misrecordatorios.Prioridad
 import com.example.misrecordatorios.EstadoRecordatorio
 import com.example.misrecordatorios.Recordatorio
+import com.example.misrecordatorios.data.sync.EstadoSincronizacion
 
 // =============================================
 // 1. CONVERTIR ENTIDAD ROOM A MODELO DE DOMINIO
@@ -28,7 +29,12 @@ fun RecordatorioEntity.toDomain(): Recordatorio {
 
         ubicacion = ubicacion,
 
-        fechaAviso = fechaAviso
+        fechaAviso = fechaAviso,
+
+        estadoSincronizacion =
+            convertirEstadoSincronizacion(
+                estadoSincronizacion
+            )
     )
 }
 
@@ -63,7 +69,8 @@ fun Recordatorio.toEntity(): RecordatorioEntity {
 
         fechaModificacion = fechaActual,
 
-        estadoSincronizacion = "PENDIENTE",
+        estadoSincronizacion =
+            EstadoSincronizacion.PENDIENTE.valor,
 
         revision = 1L,
 
@@ -164,5 +171,18 @@ private fun convertirEstado(
             "Estado desconocido: $valor"
         )
     }
+}
+
+// =============================================
+// 7. CONVERTIR ESTADO DE SINCRONIZACION
+// =============================================
+
+private fun convertirEstadoSincronizacion(
+    valor: String
+): EstadoSincronizacion {
+
+    return EstadoSincronizacion.desdeValorONull(
+        valor.trim().uppercase()
+    ) ?: EstadoSincronizacion.ERROR
 }
  

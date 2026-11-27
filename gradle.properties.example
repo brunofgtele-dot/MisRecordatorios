@@ -1,0 +1,6 @@
+# Configuracion de ejemplo - MisRecordatorios v3.0
+# URL del servidor remoto para el emulador Android.
+# Copiar esta propiedad al archivo gradle.properties.
+# La URL debe finalizar con una barra (/).
+ 
+RECORDATORIOS_BASE_URL=http://10.0.2.2:8080/
